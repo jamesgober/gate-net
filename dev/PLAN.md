@@ -108,6 +108,8 @@ Every secret is compared in constant time and zeroized after use.
 | cache | validated sessions are cached **in server memory** (`cache-mod`) with the revocation epoch, so a revocation invalidates the cache entry immediately; the database is the durable copy |
 | anti-forgery primitive | a secondary token bound to the session, for the web layer's CSRF defence |
 
+> **Full session design:** [`SESSIONS.md`](./SESSIONS.md): the record, the lifecycle, the verification path with the cost of each step, storage backends (memory default, tiered, embedded, Hive DB, the proposed gate-db), multi-node invalidation, every threat, every measure with its cost, experiments, and profiles. Storage is pluggable through `SessionStore`; nothing is hard-coded to memory.
+
 ### 6.1 Where session data lives, and what the client holds
 
 **The client holds one thing: a random 256-bit token.** It carries no user id, no roles, no expiry, no claims of any kind. It is not trusted; it is only a lookup key, and it is worthless unless it matches a record on the server.
@@ -291,3 +293,6 @@ Gap to check at design lock: whether `crypt-io` exposes HMAC-SHA-1 for standard 
 | D-006 | 2026-10-13 | Revocation flows to bouncer-io | revoked sessions must stop requests already in flight |
 | D-007 | 2026-10-13 | Opaque tokens; all session data on the server; every request verified against the server record (in-memory store backed by the database, epoch-invalidated) | nothing the client sends is trusted; database-grade verification at memory speed |
 | D-008 | 2026-10-13 | Context binding includes James's keyed user-agent hash, alongside address prefix and TLS fingerprint | James's existing practice, kept; combined with signals that are harder to spoof |
+| D-009 | 2026-10-13 | Session storage is pluggable (`SessionStore`); memory is the default; tiered memory-plus-durable is the production shape | single servers stay fast; clusters and restarts are handled without changing gate-net |
+| D-010 | 2026-10-13 | No PHP-style file-per-session store | locking, cleanup, and revocation problems; the embedded-database backend covers local persistence properly |
+| D-011 | 2026-10-13 | Every session measure documents its cost (SESSIONS.md section 8) | security and performance are decided together, never traded silently |

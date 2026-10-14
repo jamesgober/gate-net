@@ -18,7 +18,10 @@
   record, kept in memory and backed by the database. Context binding adds a
   keyed user-agent hash alongside the address prefix and TLS fingerprint.
   Further hardening and two experiments (rolling tokens, device-bound
-  sessions) listed in 6.2. Decisions D-007 and D-008; O-2 decided.
+  sessions) listed in 6.2. Decisions D-007 to D-011; O-2 decided.
+- `dev/SESSIONS.md`: the full session security design, with the cost of every
+  measure, pluggable storage (memory default, tiered, embedded, Hive DB, the
+  proposed gate-db), multi-node invalidation, experiments, and profiles.
 
 ---
 
