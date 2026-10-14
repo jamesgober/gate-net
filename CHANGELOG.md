@@ -11,6 +11,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `dev/PLAN.md`: sessions are explicitly server-side (section 6.1): the client
+  holds only a random token, and every request is verified against the server
+  record, kept in memory and backed by the database. Context binding adds a
+  keyed user-agent hash alongside the address prefix and TLS fingerprint.
+  Further hardening and two experiments (rolling tokens, device-bound
+  sessions) listed in 6.2. Decisions D-007 and D-008; O-2 decided.
+
 ---
 
 ## [0.1.0] - 2026-10-13
