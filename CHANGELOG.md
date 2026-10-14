@@ -11,6 +11,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `dev/PLAN.md`: sessions are explicitly server-side (section 6.1): the client
+  holds only a random token, and every request is verified against the server
+  record, kept in memory and backed by the database. Context binding adds a
+  keyed user-agent hash alongside the address prefix and TLS fingerprint.
+  Further hardening and two experiments (rolling tokens, device-bound
+  sessions) listed in 6.2. Decisions D-007 to D-011; O-2 decided.
+- `dev/SESSIONS.md`: the full session security design, with the cost of every
+  measure, pluggable storage (memory default, tiered, embedded, Hive DB, the
+  proposed gate-db), multi-node invalidation, experiments, and profiles.
+
 ---
 
 ## [0.1.0] - 2026-10-13

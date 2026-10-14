@@ -102,11 +102,49 @@ Every secret is compared in constant time and zeroized after use.
 | storage | only a keyed hash of the token is stored; a database leak does not leak live sessions |
 | expiry | idle timeout and absolute lifetime, both configurable; whichever comes first ends the session |
 | rotation | a new token on login, on privilege change, and periodically; the old token is invalidated |
-| context | the address prefix and client fingerprint at issue are recorded; a change raises a signal and can require re-authentication |
+| context binding | at issue the session records the address prefix, the TLS client fingerprint, and a hash of the user agent keyed with a per-account secret (held in key-vault, never sent anywhere). Every request recomputes and compares them in constant time. A mismatch is a signal; by policy it forces re-authentication, step-up, or revocation. The user agent alone is attacker-controlled and changes on browser updates, so it is one of several bindings, not the only one |
 | revocation | single session, all sessions of an account, all sessions everywhere; every revocation is passed to `bouncer-io`, which reaches requests already in flight |
 | revoked-token reuse | presenting a revoked or expired token is reported as a high-confidence hijack signal |
-| cache | validated sessions are cached (`cache-mod`) with the revocation epoch, so a revocation invalidates the cache entry immediately |
+| cache | validated sessions are cached **in server memory** (`cache-mod`) with the revocation epoch, so a revocation invalidates the cache entry immediately; the database is the durable copy |
 | anti-forgery primitive | a secondary token bound to the session, for the web layer's CSRF defence |
+
+> **Full session design:** [`SESSIONS.md`](./SESSIONS.md): the record, the lifecycle, the verification path with the cost of each step, storage backends (memory default, tiered, embedded, Hive DB, the proposed gate-db), multi-node invalidation, every threat, every measure with its cost, experiments, and profiles. Storage is pluggable through `SessionStore`; nothing is hard-coded to memory.
+
+### 6.1 Where session data lives, and what the client holds
+
+**The client holds one thing: a random 256-bit token.** It carries no user id, no roles, no expiry, no claims of any kind. It is not trusted; it is only a lookup key, and it is worthless unless it matches a record on the server.
+
+**Everything else lives on the server:** account id, roles and attributes snapshot, when the second factor was last proven, the context bindings, expiry times, and the epoch the record was validated under.
+
+Every request is verified against the server's record:
+
+```
+cookie token ─▶ keyed hash (server key) ─▶ lookup in the in-memory session store
+            ─▶ not found / expired / revoked?        ─▶ refuse (and signal on revoked reuse)
+            ─▶ context bindings match?               ─▶ else re-auth / step-up / revoke per policy
+            ─▶ record's epoch current?               ─▶ else reload from the database
+            ─▶ authenticated subject for gate-sec
+```
+
+| Layer | Holds | Cost per request |
+|---|---|---|
+| in-memory session store | every live session record | a hash lookup: tens of nanoseconds |
+| database | the durable copy (sessions survive a restart; other nodes can load them) | only on a cache miss or after an invalidation |
+
+When an account's roles change, a password changes, or a session is revoked, the account's epoch is bumped: the cached record is invalid on its very next use and reloaded or refused. A privilege change therefore takes effect on the next request, not at the next login.
+
+This is the opaque server-side session model recommended by the OWASP Session Management guidance and used by most large web applications for browser sessions. The other common model, self-contained signed tokens (JWTs) whose claims are trusted because of their signature, is rejected here: such tokens cannot be revoked instantly and carry data to the client (see O-2, decided).
+
+### 6.2 Further hardening, and experiments
+
+| Measure | Status |
+|---|---|
+| `__Host-` cookie prefix, `Secure`, `HttpOnly`, `SameSite=Lax` (cookie-net defaults) | planned |
+| concurrent-session limit per account, device list, revoke-all | planned |
+| session records encrypted at rest in the database | planned |
+| decoy session tokens planted where an attacker would find them; any use is definitive (with sentinel-sec) | planned |
+| **rolling tokens:** the token is replaced at intervals with a short grace window; if an old token is presented after its replacement, both copies exist, so one is stolen: revoke the session | experiment (must handle several open tabs) |
+| **device-bound sessions:** the browser holds a private key in hardware and proves possession, so a stolen cookie is useless on another device (Device Bound Session Credentials, a new browser standard) | experiment (browser support still limited) |
 
 ---
 
@@ -229,7 +267,7 @@ Gap to check at design lock: whether `crypt-io` exposes HMAC-SHA-1 for standard 
 | Id | Question | Recommendation |
 |---|---|---|
 | O-1 | Argon2id parameters: start from OWASP minimums (19 MiB, t=2, p=1) and tune per server? | yes, tuned on the production hardware |
-| O-2 | Self-encoded (signed) session tokens, or opaque tokens with server-side lookup? | opaque: revocation is instant and nothing sensitive travels |
+| O-2 | Self-encoded (signed) session tokens, or opaque tokens with server-side lookup? | **decided 2026-10-13 (D-007): opaque**, verified against server-side records on every request |
 | O-3 | Passkeys in 1.0, or after? | after 1.0; the core first |
 | O-4 | Publish `0.1.0` to crates.io to claim the name? | yes |
 
@@ -253,3 +291,8 @@ Gap to check at design lock: whether `crypt-io` exposes HMAC-SHA-1 for standard 
 | D-004 | 2026-10-13 | Tokens stored only as keyed hashes | a database leak must not leak live credentials |
 | D-005 | 2026-10-13 | Uniform responses and timing for every login failure | no account enumeration |
 | D-006 | 2026-10-13 | Revocation flows to bouncer-io | revoked sessions must stop requests already in flight |
+| D-007 | 2026-10-13 | Opaque tokens; all session data on the server; every request verified against the server record (in-memory store backed by the database, epoch-invalidated) | nothing the client sends is trusted; database-grade verification at memory speed |
+| D-008 | 2026-10-13 | Context binding includes James's keyed user-agent hash, alongside address prefix and TLS fingerprint | James's existing practice, kept; combined with signals that are harder to spoof |
+| D-009 | 2026-10-13 | Session storage is pluggable (`SessionStore`); memory is the default; tiered memory-plus-durable is the production shape | single servers stay fast; clusters and restarts are handled without changing gate-net |
+| D-010 | 2026-10-13 | No PHP-style file-per-session store | locking, cleanup, and revocation problems; the embedded-database backend covers local persistence properly |
+| D-011 | 2026-10-13 | Every session measure documents its cost (SESSIONS.md section 8) | security and performance are decided together, never traded silently |
