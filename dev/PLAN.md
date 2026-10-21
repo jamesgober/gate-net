@@ -62,7 +62,7 @@ It is **protocol-free**. Adapters at the top find the credentials: an HTTP adapt
 
 ### 4.1 In scope
 
-Passwords, API keys, session tokens, TOTP and recovery codes, single-use tokens (verification, reset, magic links), the login flow with uniform responses, login throttling, session issue, rotation, expiry, revocation, the session-bound anti-forgery token primitive, events for audit and detection, and store traits.
+Passwords, API keys, session tokens, TOTP and recovery codes, single-use tokens (verification, reset, magic links), the login flow with uniform responses, login throttling, session issue, rotation, expiry, revocation, events for audit and detection, and store traits.
 
 ### 4.2 Out of scope, and where it goes
 
@@ -72,6 +72,7 @@ Passwords, API keys, session tokens, TOTP and recovery codes, single-use tokens 
 | user records, profiles, account lifecycle | users core |
 | sending email or SMS (verification, reset) | an SMTP crate (not built yet); gate-net produces the token, the app sends it |
 | cookies, headers, CSRF wiring for HTTP | the web layer's adapter |
+| the anti-forgery (CSRF) token primitive | [`csrf-sec`](https://github.com/jamesgober/csrf-sec) (D-012); gate-net supplies the session id and the previous session id after login |
 | enforcing revocation on in-flight requests | `bouncer-io` (gate-net issues the revocation) |
 | the hash and cipher primitives | `crypt-io` |
 
@@ -106,7 +107,7 @@ Every secret is compared in constant time and zeroized after use.
 | revocation | single session, all sessions of an account, all sessions everywhere; every revocation is passed to `bouncer-io`, which reaches requests already in flight |
 | revoked-token reuse | presenting a revoked or expired token is reported as a high-confidence hijack signal |
 | cache | validated sessions are cached (`cache-mod`) with the revocation epoch, so a revocation invalidates the cache entry immediately |
-| anti-forgery primitive | a secondary token bound to the session, for the web layer's CSRF defence |
+| anti-forgery | moved to `csrf-sec` (D-012): its tokens are bound to the session id gate-net issues; gate-net keeps the previous session id for a short window after login so csrf-sec can tell a stale tab from a forgery |
 
 ---
 
@@ -253,3 +254,4 @@ Gap to check at design lock: whether `crypt-io` exposes HMAC-SHA-1 for standard 
 | D-004 | 2026-10-13 | Tokens stored only as keyed hashes | a database leak must not leak live credentials |
 | D-005 | 2026-10-13 | Uniform responses and timing for every login failure | no account enumeration |
 | D-006 | 2026-10-13 | Revocation flows to bouncer-io | revoked sessions must stop requests already in flight |
+| D-012 | 2026-10-21 | The anti-forgery token primitive moves to its own crate, `csrf-sec` | it is protocol-free, used by web-net and WASP alike, and has its own threat model; gate-net keeps sessions and supplies the session ids it binds to |
