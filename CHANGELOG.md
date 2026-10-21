@@ -11,6 +11,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `dev/PLAN.md`: the anti-forgery token primitive moved to `csrf-sec`
+  (decision D-012); gate-net supplies the session id it binds to.
+
 ---
 
 ## [0.1.0] - 2026-10-13
